@@ -5,7 +5,7 @@ using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Navigation;
 
-namespace PullToRefreshListView
+namespace PullToRefreshListView.Sample
 {
     sealed partial class App : Application
     {
