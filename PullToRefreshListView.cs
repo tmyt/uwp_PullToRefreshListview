@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using Windows.Foundation;
 using Windows.UI;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Controls.Primitives;
 using Windows.UI.Xaml.Media;
 
 namespace PullToRefreshListView
@@ -93,7 +95,6 @@ namespace PullToRefreshListView
 
         #region Field
         private double OffsetTreshhold = 40;
-        private DispatcherTimer CompressionTimer;
         private ScrollViewer RootScrollViewer;
         private DispatcherTimer Timer;
         private Grid ContainerGrid;
@@ -113,7 +114,8 @@ namespace PullToRefreshListView
             RootScrollViewer.ViewChanged += ScrollViewer_ViewChanged;
             RootScrollViewer.Margin = new Thickness(0, 0, 0, -RefreshHeaderHeight);
             RootScrollViewer.RenderTransform = new CompositeTransform() { TranslateY = -RefreshHeaderHeight };
-
+            RootScrollViewer.DirectManipulationStarted += Viewer_DirectManipulationStarted;
+            RootScrollViewer.DirectManipulationCompleted += Viewer_DirectManipulationCompleted;
             ContainerGrid = base.GetTemplateChild("ContainerGrid") as Grid;
 
             PullToRefreshIndicator = GetTemplateChild("PullToRefreshIndicator") as Border;
@@ -128,11 +130,26 @@ namespace PullToRefreshListView
             Timer.Interval = TimeSpan.FromMilliseconds(100);
             Timer.Tick += Timer_Tick;
 
-            CompressionTimer = new DispatcherTimer();
-            CompressionTimer.Interval = TimeSpan.FromSeconds(1);
-            CompressionTimer.Tick += CompressionTimer_Tick;
+            var ScrollBar = FindChild<ScrollBar>(RootScrollViewer);
+            ScrollBar.Margin = new Thickness(0, RefreshHeaderHeight, 0, 0);
+        }
 
+        private void Viewer_DirectManipulationStarted(object sender, object e)
+        {
             Timer.Start();
+        }
+
+        private void Viewer_DirectManipulationCompleted(object sender, object e)
+        {
+            Timer.Stop();
+            if (IsReadyToRefresh)
+            {
+                Timer_Tick(null, null);
+            }
+            IsCompressionTimerRunning = false;
+            IsCompressedEnough = false;
+            IsReadyToRefresh = false;
+            VisualStateManager.GoToState(this, "Normal", true);
         }
 
         private void OnSizeChanged(object sender, SizeChangedEventArgs e)
@@ -156,11 +173,6 @@ namespace PullToRefreshListView
                     Timer.Stop();
                 }
 
-                if (CompressionTimer != null)
-                {
-                    CompressionTimer.Stop();
-                }
-
                 IsCompressionTimerRunning = false;
                 IsCompressedEnough = false;
                 IsReadyToRefresh = false;
@@ -178,13 +190,8 @@ namespace PullToRefreshListView
 
                 if (compressionOffset > OffsetTreshhold)
                 {
-                    if (IsCompressionTimerRunning == false)
-                    {
-                        IsCompressionTimerRunning = true;
-                        CompressionTimer.Start();
-                    }
-
-                    IsCompressedEnough = true;
+                    VisualStateManager.GoToState(this, "ReadyToRefresh", true);
+                    IsReadyToRefresh = true;
                 }
                 else if (compressionOffset == 0 && IsReadyToRefresh == true)
                 {
@@ -195,20 +202,6 @@ namespace PullToRefreshListView
                     IsCompressedEnough = false;
                     IsCompressionTimerRunning = false;
                 }
-            }
-        }
-
-        private void CompressionTimer_Tick(object sender, object e)
-        {
-            if (IsCompressedEnough)
-            {
-                VisualStateManager.GoToState(this, "ReadyToRefresh", true);
-                IsReadyToRefresh = true;
-            }
-            else
-            {
-                IsCompressedEnough = false;
-                CompressionTimer.Stop();
             }
         }
 
@@ -239,6 +232,29 @@ namespace PullToRefreshListView
             {
                 MoreContent(this, EventArgs.Empty);
             }
+        }
+        #endregion
+
+        #region Helper
+
+        T FindChild<T>(DependencyObject d)
+            where T : DependencyObject
+        {
+            var q = new Queue<DependencyObject>();
+            q.Enqueue(d);
+            while (q.Count > 0)
+            {
+                var e = q.Dequeue();
+                if (e is T) return (T)e;
+                var n = VisualTreeHelper.GetChildrenCount(e);
+                for (var i = 0; i < n; i++)
+                {
+                    var c = VisualTreeHelper.GetChild(e, i);
+                    if (c is T) return (T)c;
+                    q.Enqueue(c);
+                }
+            }
+            return null;
         }
         #endregion
     }
